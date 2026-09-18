@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# The CLI and the entry point adjust sys.path before importing the service layer.
+"src/cli/main.py" = ["E402"]
+"summarize" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
