@@ -4,6 +4,7 @@ Handles communication with local Ollama API.
 """
 
 import json
+import os
 import urllib.request
 import urllib.error
 import re
@@ -11,6 +12,7 @@ from typing import Optional
 
 
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
+OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 
 # Prompt template for exam-ready summaries
 SUMMARY_PROMPT_TEMPLATE = """You are a study assistant that creates exam-ready summaries.
@@ -39,26 +41,62 @@ SUMMARIZE THIS TEXT:
 """
 
 
-def get_available_model() -> str:
+# Models known to do well at short structured summaries, best first.
+# Matched as a prefix against installed model names (so "llama3.2:3b" matches).
+PREFERRED_MODELS = ("llama3.2", "llama3.1", "llama3", "mistral", "qwen2.5", "phi3", "gemma2")
+
+DEFAULT_MODEL = "llama3.2"
+
+MODEL_ENV_VAR = "STUDY_ASSISTANT_MODEL"
+
+
+def list_installed_models() -> list:
     """
-    Get the name of an available Ollama model.
+    Return the names of models installed in the local Ollama instance.
+
+    Returns an empty list if Ollama is unreachable or reports nothing.
+    """
+    try:
+        req = urllib.request.Request(OLLAMA_TAGS_URL, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    return [m["name"] for m in data.get("models", []) if m.get("name")]
+
+
+def resolve_model(model: Optional[str] = None) -> str:
+    """
+    Decide which Ollama model to use.
+
+    Precedence:
+    1. Explicit argument (``--model``).
+    2. The STUDY_ASSISTANT_MODEL environment variable.
+    3. The first installed model matching PREFERRED_MODELS.
+    4. The first installed model, whatever it is.
+    5. DEFAULT_MODEL.
+
+    Args:
+        model: Explicitly requested model name, if any.
 
     Returns:
         Model name string.
     """
-    try:
-        req = urllib.request.Request(
-            "http://localhost:11434/api/tags",
-            method="GET"
-        )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            if data.get("models") and len(data["models"]) > 0:
-                return data["models"][0]["name"]
-    except Exception:
-        pass
+    if model:
+        return model
 
-    return "llama3.2"
+    env_model = os.environ.get(MODEL_ENV_VAR, "").strip()
+    if env_model:
+        return env_model
+
+    installed = list_installed_models()
+    for preferred in PREFERRED_MODELS:
+        for name in installed:
+            if name.startswith(preferred):
+                return name
+
+    return installed[0] if installed else DEFAULT_MODEL
 
 
 def generate_summary(text: str, model: Optional[str] = None) -> str:
@@ -67,7 +105,7 @@ def generate_summary(text: str, model: Optional[str] = None) -> str:
 
     Args:
         text: The text to summarize.
-        model: Optional model name. If not provided, auto-detects.
+        model: Optional model name. If not provided, resolve_model() decides.
 
     Returns:
         Formatted, structured bullet-point summary.
@@ -76,8 +114,7 @@ def generate_summary(text: str, model: Optional[str] = None) -> str:
         ConnectionError: If Ollama is not running or unreachable.
         RuntimeError: If the API request fails.
     """
-    if model is None:
-        model = get_available_model()
+    model = resolve_model(model)
 
     prompt = SUMMARY_PROMPT_TEMPLATE.format(text=text[:8000])  # Limit input size
 

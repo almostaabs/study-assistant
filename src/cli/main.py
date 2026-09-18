@@ -22,14 +22,46 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
         "--text",
         type=str,
-        required=True,
         help="Text content to summarize",
+    )
+    source.add_argument(
+        "--file",
+        type=str,
+        help="Path to a UTF-8 text file to summarize",
+    )
+
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help=(
+            "Ollama model to use. Overrides the STUDY_ASSISTANT_MODEL "
+            "environment variable and auto-detection."
+        ),
     )
 
     return parser
+
+
+def read_file(path: str) -> str:
+    """
+    Read text from a file.
+
+    Raises:
+        SystemExit: If the file is missing, unreadable, or not UTF-8 text.
+    """
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"Error: Cannot read file '{path}': {e}", file=sys.stderr)
+        sys.exit(1)
+    except UnicodeDecodeError:
+        print(f"Error: File '{path}' is not UTF-8 text.", file=sys.stderr)
+        sys.exit(1)
 
 
 def validate_text(text: str) -> None:
@@ -54,11 +86,14 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
 
+    # Gather input
+    text = read_file(args.file) if args.file else args.text
+
     # Validate input
-    validate_text(args.text)
+    validate_text(text)
 
     # Call service layer
-    summary = summarize_text(args.text)
+    summary = summarize_text(text, model=args.model)
 
     # Output result
     print(summary)

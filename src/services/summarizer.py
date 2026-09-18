@@ -3,10 +3,12 @@ Summarization service module.
 Phase 3: Improved prompt and structured output for exam-ready summaries.
 """
 
+from typing import Optional
+
 from .ollama import generate_summary
 
 
-def summarize_text(text: str) -> str:
+def summarize_text(text: str, model: Optional[str] = None) -> str:
     """
     Generate an exam-ready summary of the provided text.
 
@@ -18,6 +20,7 @@ def summarize_text(text: str) -> str:
 
     Args:
         text: The text to summarize.
+        model: Optional Ollama model name. Falls back to auto-detection.
 
     Returns:
         Formatted bullet-point summary ready for studying.
@@ -26,7 +29,7 @@ def summarize_text(text: str) -> str:
         return "Error: No text provided to summarize."
 
     try:
-        return generate_summary(text)
+        return generate_summary(text, model=model)
     except ConnectionError as e:
         return (
             f"Error: {e}\n\n"
